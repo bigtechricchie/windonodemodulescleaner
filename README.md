@@ -7,32 +7,13 @@ WindoNodeModulesCleaner is a Windows utility written in Go for discovering
 
 Built by Edward Siwek.
 
-The application is being designed around a controlled cleanup workflow:
-
-```text
-select root
-    ↓
-scan
-    ↓
-review discovered targets
-    ↓
-select targets
-    ↓
-confirm deletion
-    ↓
-validate
-    ↓
-delete
-    ↓
-report results
-```
-
 ## Project status
 
 Early development.
 
-The initial implementation will focus on establishing correct filesystem
-discovery before introducing destructive operations.
+The application can currently scan a user-supplied directory tree and report top-level `node_modules` directories without modifying the filesystem.
+
+Deletion is not implemented yet.
 
 ## Scope
 
@@ -54,6 +35,50 @@ Initial target:
 - Windows 11;
 - x86-64.
 
+## Usage
+
+Scan a directory tree by providing the root directory:
+
+```powershell
+go run . -root C:\Projects
+```
+
+Example output:
+
+```text
+Scanning C:\Projects for node_modules directories...
+Found 2 node_modules directories:
+C:\Projects\app-one\node_modules
+C:\Projects\app-two\node_modules
+```
+
+If no matching directories are found:
+
+```text
+Scanning C:\Projects for node_modules directories...
+No node_modules directories found.
+```
+
+The scanner does not descend into a discovered `node_modules` directory.
+
+For example, given:
+
+```text
+C:\Projects\app\
+└── node_modules\
+    └── package-a\
+        └── node_modules\
+```
+
+the scan reports only:
+
+```text
+C:\Projects\app\node_modules
+```
+
+The nested dependency directory is not reported separately because it is
+already contained within the outer `node_modules` tree.
+
 ## Engineering principles
 
 The project favours:
@@ -74,12 +99,44 @@ Discovery and deletion are separate operations.
 Finding a directory gives the application permission to present it for review,
 not permission to delete it.
 
-Before a destructive operation is attempted, the selected target must still
-satisfy the application's cleanup rules.
+The current scanner is read-only and does not remove filesystem content.
+
+Before destructive behaviour is introduced, deletion targets will require
+independent validation and explicit user confirmation.
+
+## Testing
+
+The scanner is tested using temporary filesystem trees created specifically for
+the test run.
+
+This allows discovery behaviour to be verified without scanning or modifying
+real development repositories.
+
+Run the test suite with:
+
+```powershell
+go test ./...
+```
+
+Additional engineering checks:
+
+```powershell
+go fmt ./...
+go vet ./...
+go test ./...
+go build ./...
+```
 
 ## Current limitations
 
-The application is in early development and does not yet perform filesystem
-cleanup.
+The application currently:
 
-Do not interpret the current repository as a completed release.
+- requires the scan root to be supplied through the command line;
+- reports discovered directory paths only;
+- does not calculate directory sizes;
+- does not provide a graphical interface;
+- does not delete directories;
+- does not yet provide detailed reporting for partially inaccessible directory trees.
+
+Filesystem deletion will be introduced only after the relevant validation and
+safety behaviour has been implemented and tested.
