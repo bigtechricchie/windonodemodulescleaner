@@ -88,3 +88,46 @@ func TestFindNodeModulesDirectoriesRejectsFileAsRoot(t *testing.T) {
 		t.Fatal("expected an error when root path is a file")
 	}
 }
+
+func TestCalculateDirectorySize(t *testing.T) {
+	rootDirectory := t.TempDir()
+
+	firstFile := filepath.Join(rootDirectory, "first.txt")
+	secondDirectory := filepath.Join(rootDirectory, "nested")
+	secondFile := filepath.Join(secondDirectory, "second.txt")
+
+	if err := os.MkdirAll(secondDirectory, 0o755); err != nil {
+		t.Fatalf("create nested test directory: %v", err)
+	}
+
+	if err := os.WriteFile(
+		firstFile,
+		[]byte("12345"),
+		0o600,
+	); err != nil {
+		t.Fatalf("create first test file: %v", err)
+	}
+
+	if err := os.WriteFile(
+		secondFile,
+		[]byte("1234567890"),
+		0o600,
+	); err != nil {
+		t.Fatalf("create second test file: %v", err)
+	}
+
+	sizeBytes, err := calculateDirectorySize(rootDirectory)
+	if err != nil {
+		t.Fatalf("calculate directory size: %v", err)
+	}
+
+	const expectedSize int64 = 15
+
+	if sizeBytes != expectedSize {
+		t.Fatalf(
+			"expected size %d bytes, got %d",
+			expectedSize,
+			sizeBytes,
+		)
+	}
+}

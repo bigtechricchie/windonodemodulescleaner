@@ -9,7 +9,13 @@ import (
 
 const nodeModulesDirectoryName = "node_modules"
 
-func findNodeModulesDirectories(rootDirectory string) ([]string, error) {
+type scanResult struct {
+	Path      string
+	SizeBytes int64
+	SizeError error
+}
+
+func findNodeModulesDirectories(rootDirectory string) ([]scanResult, error) {
 	rootDirectory, err := filepath.Abs(rootDirectory)
 	if err != nil {
 		return nil, fmt.Errorf("resolve root directory: %w", err)
@@ -24,32 +30,76 @@ func findNodeModulesDirectories(rootDirectory string) ([]string, error) {
 		return nil, fmt.Errorf("root path is not a directory: %s", rootDirectory)
 	}
 
-	var nodeModulesDirectories []string
+	var results []scanResult
 
-	err = filepath.WalkDir(rootDirectory, func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
+	err = filepath.WalkDir(
+		rootDirectory,
+		func(path string, entry fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
 
-		if !entry.IsDir() {
-			return nil
-		}
+			if !entry.IsDir() {
+				return nil
+			}
 
-		if path == rootDirectory {
-			return nil
-		}
+			if path == rootDirectory {
+				return nil
+			}
 
-		if entry.Name() != nodeModulesDirectoryName {
-			return nil
-		}
+			if entry.Name() != nodeModulesDirectoryName {
+				return nil
+			}
 
-		nodeModulesDirectories = append(nodeModulesDirectories, path)
+			sizeBytes, sizeErr := calculateDirectorySize(path)
 
-		return fs.SkipDir
-	})
+			results = append(results, scanResult{
+				Path:      path,
+				SizeBytes: sizeBytes,
+				SizeError: sizeErr,
+			})
+
+			return fs.SkipDir
+		},
+	)
 	if err != nil {
 		return nil, fmt.Errorf("scan root directory: %w", err)
 	}
 
-	return nodeModulesDirectories, nil
+	return results, nil
+}
+
+func calculateDirectorySize(rootDirectory string) (int64, error) {
+	var sizeBytes int64
+
+	err := filepath.WalkDir(
+		rootDirectory,
+		func(path string, entry fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+
+			if entry.IsDir() {
+				return nil
+			}
+
+			fileInfo, err := entry.Info()
+			if err != nil {
+				return fmt.Errorf("inspect %q: %w", path, err)
+			}
+
+			sizeBytes += fileInfo.Size()
+
+			return nil
+		},
+	)
+	if err != nil {
+		return 0, fmt.Errorf(
+			"calculate size of %q: %w",
+			rootDirectory,
+			err,
+		)
+	}
+
+	return sizeBytes, nil
 }

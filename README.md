@@ -11,7 +11,12 @@ Built by Edward Siwek.
 
 Early development.
 
-The application can currently scan a user-supplied directory tree and report top-level `node_modules` directories without modifying the filesystem.
+The application can currently:
+
+- scan a user-supplied directory tree;
+- identify top-level `node_modules` directories;
+- attempt to calculate the size of each discovered directory;
+- report the results without modifying the filesystem.
 
 Deletion is not implemented yet.
 
@@ -48,8 +53,8 @@ Example output:
 ```text
 Scanning C:\Projects for node_modules directories...
 Found 2 node_modules directories:
-C:\Projects\app-one\node_modules
-C:\Projects\app-two\node_modules
+C:\Projects\app-one\node_modules    824.3 MiB
+C:\Projects\app-two\node_modules      1.1 GiB
 ```
 
 If no matching directories are found:
@@ -59,7 +64,8 @@ Scanning C:\Projects for node_modules directories...
 No node_modules directories found.
 ```
 
-The scanner does not descend into a discovered `node_modules` directory.
+The scanner does not descend into a discovered `node_modules` directory while
+searching for additional cleanup candidates.
 
 For example, given:
 
@@ -78,6 +84,25 @@ C:\Projects\app\node_modules
 
 The nested dependency directory is not reported separately because it is
 already contained within the outer `node_modules` tree.
+
+## Directory sizes
+
+Directory sizes are calculated during scanning from the files visible to the
+application at that time.
+
+The displayed values use binary units such as:
+
+```text
+KiB
+MiB
+GiB
+```
+
+If the application cannot determine the size of a discovered directory, the
+directory remains in the scan results and its size is reported as unavailable.
+
+A size-calculation failure does not cause an otherwise discovered
+`node_modules` directory to be discarded from the results.
 
 ## Engineering principles
 
@@ -99,18 +124,19 @@ Discovery and deletion are separate operations.
 Finding a directory gives the application permission to present it for review,
 not permission to delete it.
 
-The current scanner is read-only and does not remove filesystem content.
+The current implementation is read-only and does not remove filesystem
+content.
 
 Before destructive behaviour is introduced, deletion targets will require
 independent validation and explicit user confirmation.
 
 ## Testing
 
-The scanner is tested using temporary filesystem trees created specifically for
-the test run.
+The scanner and directory-size behaviour are tested using temporary filesystem
+trees created specifically for each test run.
 
-This allows discovery behaviour to be verified without scanning or modifying
-real development repositories.
+This allows discovery and size calculation to be verified without scanning or
+modifying real development repositories.
 
 Run the test suite with:
 
@@ -132,11 +158,12 @@ go build ./...
 The application currently:
 
 - requires the scan root to be supplied through the command line;
-- reports discovered directory paths only;
-- does not calculate directory sizes;
 - does not provide a graphical interface;
 - does not delete directories;
-- does not yet provide detailed reporting for partially inaccessible directory trees.
+- does not support cancellation for long-running scans;
+- does not yet provide detailed reporting for partially inaccessible directory
+  trees;
+- performs directory-size calculation sequentially.
 
 Filesystem deletion will be introduced only after the relevant validation and
 safety behaviour has been implemented and tested.
