@@ -16,6 +16,7 @@ The application can currently:
 - scan a user-supplied directory tree;
 - identify top-level `node_modules` directories;
 - attempt to calculate the size of each discovered directory;
+- report inaccessible paths encountered during an otherwise valid scan;
 - report the results without modifying the filesystem.
 
 Deletion is not implemented yet.
@@ -104,6 +105,25 @@ directory remains in the scan results and its size is reported as unavailable.
 A size-calculation failure does not cause an otherwise discovered
 `node_modules` directory to be discarded from the results.
 
+## Scan warnings
+
+If the application cannot inspect a path inside an otherwise valid scan root,
+it reports the affected path as a warning and continues scanning where
+possible.
+
+For example:
+
+```text
+Scan completed with 1 warning(s):
+C:\Projects\restricted: Access is denied.
+```
+
+A warning means that the scan may be incomplete because part of the selected
+directory tree could not be inspected.
+
+Failure to inspect the scan root itself remains a fatal error because the
+application cannot reliably perform the requested scan.
+
 ## Engineering principles
 
 The project favours:
@@ -138,6 +158,9 @@ trees created specifically for each test run.
 This allows discovery and size calculation to be verified without scanning or
 modifying real development repositories.
 
+The test suite also verifies that invalid scan roots, including missing paths
+and files supplied in place of directories, are rejected.
+
 Run the test suite with:
 
 ```powershell
@@ -161,9 +184,9 @@ The application currently:
 - does not provide a graphical interface;
 - does not delete directories;
 - does not support cancellation for long-running scans;
-- does not yet provide detailed reporting for partially inaccessible directory
-  trees;
-- performs directory-size calculation sequentially.
+- performs directory-size calculation sequentially;
+- does not yet provide dedicated Windows-specific tests for inaccessible
+  directory ACLs, junctions, or other reparse-point behaviour.
 
 Filesystem deletion will be introduced only after the relevant validation and
 safety behaviour has been implemented and tested.

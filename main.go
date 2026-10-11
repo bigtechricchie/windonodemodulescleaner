@@ -25,43 +25,66 @@ func main() {
 		*rootDirectory,
 	)
 
-	nodeModulesDirectories, err := findNodeModulesDirectories(*rootDirectory)
+	scanOutcome, err := findNodeModulesDirectories(*rootDirectory)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
 
-	if len(nodeModulesDirectories) == 0 {
+	if len(scanOutcome.Results) == 0 {
 		fmt.Println("No node_modules directories found.")
-		return
-	}
+	} else {
+		directoryWord := "directories"
 
-	fmt.Printf(
-		"Found %d node_modules directories:\n",
-		len(nodeModulesDirectories),
-	)
-
-	for _, directory := range nodeModulesDirectories {
-		if directory.SizeError != nil {
-			fmt.Printf(
-				"%s    size unavailable\n",
-				directory.Path,
-			)
-
-			fmt.Fprintf(
-				os.Stderr,
-				"warning: %v\n",
-				directory.SizeError,
-			)
-
-			continue
+		if len(scanOutcome.Results) == 1 {
+			directoryWord = "directory"
 		}
 
 		fmt.Printf(
-			"%s    %s\n",
-			directory.Path,
-			formatByteSize(directory.SizeBytes),
+			"Found %d node_modules %s:\n",
+			len(scanOutcome.Results),
+			directoryWord,
 		)
+
+		for _, result := range scanOutcome.Results {
+			if result.SizeError != nil {
+				fmt.Printf(
+					"%s    size unavailable\n",
+					result.Path,
+				)
+
+				fmt.Fprintf(
+					os.Stderr,
+					"warning: %v\n",
+					result.SizeError,
+				)
+
+				continue
+			}
+
+			fmt.Printf(
+				"%s    %s\n",
+				result.Path,
+				formatByteSize(result.SizeBytes),
+			)
+		}
+	}
+
+	if len(scanOutcome.Warnings) > 0 {
+		fmt.Fprintf(
+			os.Stderr,
+			"\nScan completed with %d warning(s):\n",
+			len(scanOutcome.Warnings),
+		)
+
+		for _, warning := range scanOutcome.Warnings {
+			fmt.Fprintf(
+				os.Stderr,
+				"%s: %v\n",
+				warning.Path,
+				warning.Err,
+			)
+		}
 	}
 }
 

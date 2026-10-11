@@ -15,28 +15,53 @@ type scanResult struct {
 	SizeError error
 }
 
-func findNodeModulesDirectories(rootDirectory string) ([]scanResult, error) {
+type scanWarning struct {
+	Path string
+	Err  error
+}
+
+type scanOutcome struct {
+	Results  []scanResult
+	Warnings []scanWarning
+}
+
+func findNodeModulesDirectories(rootDirectory string) (scanOutcome, error) {
 	rootDirectory, err := filepath.Abs(rootDirectory)
 	if err != nil {
-		return nil, fmt.Errorf("resolve root directory: %w", err)
+		return scanOutcome{}, fmt.Errorf("resolve root directory: %w", err)
 	}
 
 	rootInfo, err := os.Stat(rootDirectory)
 	if err != nil {
-		return nil, fmt.Errorf("inspect root directory: %w", err)
+		return scanOutcome{}, fmt.Errorf("inspect root directory: %w", err)
 	}
 
 	if !rootInfo.IsDir() {
-		return nil, fmt.Errorf("root path is not a directory: %s", rootDirectory)
+		return scanOutcome{}, fmt.Errorf(
+			"root path is not a directory: %s",
+			rootDirectory,
+		)
 	}
 
-	var results []scanResult
+	var outcome scanOutcome
 
 	err = filepath.WalkDir(
 		rootDirectory,
 		func(path string, entry fs.DirEntry, walkErr error) error {
 			if walkErr != nil {
-				return walkErr
+				if path == rootDirectory {
+					return walkErr
+				}
+
+				outcome.Warnings = append(
+					outcome.Warnings,
+					scanWarning{
+						Path: path,
+						Err:  walkErr,
+					},
+				)
+
+				return nil
 			}
 
 			if !entry.IsDir() {
@@ -53,20 +78,23 @@ func findNodeModulesDirectories(rootDirectory string) ([]scanResult, error) {
 
 			sizeBytes, sizeErr := calculateDirectorySize(path)
 
-			results = append(results, scanResult{
-				Path:      path,
-				SizeBytes: sizeBytes,
-				SizeError: sizeErr,
-			})
+			outcome.Results = append(
+				outcome.Results,
+				scanResult{
+					Path:      path,
+					SizeBytes: sizeBytes,
+					SizeError: sizeErr,
+				},
+			)
 
 			return fs.SkipDir
 		},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("scan root directory: %w", err)
+		return scanOutcome{}, fmt.Errorf("scan root directory: %w", err)
 	}
 
-	return results, nil
+	return outcome, nil
 }
 
 func calculateDirectorySize(rootDirectory string) (int64, error) {
