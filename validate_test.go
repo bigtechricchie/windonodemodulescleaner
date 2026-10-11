@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -208,6 +209,68 @@ func TestValidateCleanupTargetRejectsPrefixConfusion(
 	if err == nil {
 		t.Fatal(
 			"expected prefix-confusion target outside root to be rejected",
+		)
+	}
+}
+
+func TestValidateCleanupTargetRejectsSymlinkTarget(
+	t *testing.T,
+) {
+	rootDirectory := t.TempDir()
+
+	projectDirectory := filepath.Join(
+		rootDirectory,
+		"project",
+	)
+
+	actualDirectory := filepath.Join(
+		rootDirectory,
+		"shared-dependencies",
+	)
+
+	targetDirectory := filepath.Join(
+		projectDirectory,
+		"node_modules",
+	)
+
+	if err := os.MkdirAll(projectDirectory, 0o755); err != nil {
+		t.Fatalf(
+			"create project directory: %v",
+			err,
+		)
+	}
+
+	if err := os.MkdirAll(actualDirectory, 0o755); err != nil {
+		t.Fatalf(
+			"create symlink destination: %v",
+			err,
+		)
+	}
+
+	if err := os.Symlink(
+		actualDirectory,
+		targetDirectory,
+	); err != nil {
+		if runtime.GOOS == "windows" {
+			t.Skipf(
+				"symlink creation unavailable on this Windows host: %v",
+				err,
+			)
+		}
+
+		t.Fatalf(
+			"create symlink cleanup target: %v",
+			err,
+		)
+	}
+
+	err := validateCleanupTarget(
+		rootDirectory,
+		targetDirectory,
+	)
+	if err == nil {
+		t.Fatal(
+			"expected symlink cleanup target to be rejected",
 		)
 	}
 }

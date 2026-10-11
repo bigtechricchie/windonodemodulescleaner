@@ -18,6 +18,7 @@ The application can currently:
 - attempt to calculate the size of each discovered directory;
 - report inaccessible paths encountered during an otherwise valid scan;
 - provide independent cleanup-target validation for future deletion workflows;
+- reject linked cleanup targets that do not appear as ordinary directories;
 - report the results without modifying the filesystem.
 
 Deletion is not implemented yet.
@@ -151,31 +152,40 @@ not permission to delete it.
 The current implementation is read-only and does not remove filesystem
 content.
 
-Before destructive behaviour is introduced, deletion targets require
-independent validation.
+Before a discovered directory can become eligible for future deletion, it must
+pass validation independently from discovery.
 
 ## Cleanup-target validation
 
 Deletion is not implemented yet.
 
-Before a discovered directory can become eligible for future deletion, it must pass validation independently from discovery.
-
 The current validation requires that:
 
 - the target exists;
-- the target is a directory;
-- its final path component is exactly `node_modules`;
-- the target is not the selected scan root;
+- the target's final path component is exactly `node_modules`;
 - the target is lexically contained within the selected scan root;
+- the target is not the selected scan root;
+- the final target entry is an ordinary directory rather than a symbolic link
+  or supported Windows name-surrogate directory reparse point;
+- the resolved target is a directory;
 - the resolved target remains contained within the resolved scan root after
   symbolic-link resolution.
+
+Cleanup targets that are themselves symbolic links or Windows name-surrogate
+directory reparse points, such as junctions or mounted folders, are not
+eligible for cleanup.
+
+The `Lstat` check applies to the final cleanup-target entry. Resolved-path
+containment remains necessary because an ancestor directory can still redirect
+the complete path through a symbolic link, junction, or other supported
+name-surrogate path component.
 
 These checks establish a baseline safety boundary between discovery and future
 destructive operations.
 
 They do not constitute final deletion authorization.
 
-Windows reparse-point handling and protection against filesystem changes
+Broader Windows reparse-point policy and protection against filesystem changes
 between validation and deletion require additional work before deletion is
 introduced.
 
@@ -195,7 +205,9 @@ The validation tests cover:
 - files named `node_modules`;
 - targets outside the selected root;
 - path-prefix confusion such as `projects` versus `projects-other`;
-- rejection of the selected scan root itself.
+- rejection of the selected scan root itself;
+- rejection of symbolic-link cleanup targets where the test environment permits
+  symbolic-link creation.
 
 The test suite also verifies that invalid scan roots, including missing paths
 and files supplied in place of directories, are rejected.
@@ -224,11 +236,12 @@ The application currently:
 - does not delete directories;
 - does not support cancellation for long-running scans;
 - performs directory-size calculation sequentially;
-- does not yet provide dedicated Windows-specific tests for inaccessible
-  directory ACLs, junctions, or other reparse-point behaviour;
+- does not yet provide dedicated Windows-specific automated coverage for
+  junctions and broader reparse-point behaviour;
 - does not yet provide a complete Windows reparse-point deletion policy;
 - does not yet protect a future deletion operation from filesystem changes
   between validation and deletion.
 
-Filesystem deletion will be introduced only after the relevant validation and
-Windows-specific safety behaviour has been implemented and tested.
+Filesystem deletion will be introduced only after the relevant validation,
+Windows-specific path-safety behaviour, and destructive-operation safeguards
+have been implemented and tested.

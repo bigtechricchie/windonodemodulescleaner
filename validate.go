@@ -38,6 +38,21 @@ func validateCleanupTarget(
 		)
 	}
 
+	targetEntry, err := os.Lstat(absoluteTarget)
+	if err != nil {
+		return fmt.Errorf(
+			"inspect cleanup target entry: %w",
+			err,
+		)
+	}
+
+	if !targetEntry.IsDir() {
+		return fmt.Errorf(
+			"cleanup target is not an ordinary directory: %s",
+			absoluteTarget,
+		)
+	}
+
 	targetInfo, err := os.Stat(absoluteTarget)
 	if err != nil {
 		return fmt.Errorf("inspect cleanup target: %w", err)
