@@ -17,6 +17,7 @@ The application can currently:
 - identify top-level `node_modules` directories;
 - attempt to calculate the size of each discovered directory;
 - report inaccessible paths encountered during an otherwise valid scan;
+- provide independent cleanup-target validation for future deletion workflows;
 - report the results without modifying the filesystem.
 
 Deletion is not implemented yet.
@@ -53,7 +54,9 @@ Example output:
 
 ```text
 Scanning C:\Projects for node_modules directories...
+
 Found 2 node_modules directories:
+
 C:\Projects\app-one\node_modules    824.3 MiB
 C:\Projects\app-two\node_modules      1.1 GiB
 ```
@@ -62,6 +65,7 @@ If no matching directories are found:
 
 ```text
 Scanning C:\Projects for node_modules directories...
+
 No node_modules directories found.
 ```
 
@@ -147,16 +151,51 @@ not permission to delete it.
 The current implementation is read-only and does not remove filesystem
 content.
 
-Before destructive behaviour is introduced, deletion targets will require
-independent validation and explicit user confirmation.
+Before destructive behaviour is introduced, deletion targets require
+independent validation.
+
+## Cleanup-target validation
+
+Deletion is not implemented yet.
+
+Before a discovered directory can become eligible for future deletion, it must pass validation independently from discovery.
+
+The current validation requires that:
+
+- the target exists;
+- the target is a directory;
+- its final path component is exactly `node_modules`;
+- the target is not the selected scan root;
+- the target is lexically contained within the selected scan root;
+- the resolved target remains contained within the resolved scan root after
+  symbolic-link resolution.
+
+These checks establish a baseline safety boundary between discovery and future
+destructive operations.
+
+They do not constitute final deletion authorization.
+
+Windows reparse-point handling and protection against filesystem changes
+between validation and deletion require additional work before deletion is
+introduced.
 
 ## Testing
 
-The scanner and directory-size behaviour are tested using temporary filesystem
-trees created specifically for each test run.
+The scanner, directory-size behaviour, and cleanup-target validation are tested
+using temporary filesystem trees created specifically for each test run.
 
-This allows discovery and size calculation to be verified without scanning or
-modifying real development repositories.
+This allows discovery, size calculation, and path-validation behaviour to be
+verified without scanning or modifying real development repositories.
+
+The validation tests cover:
+
+- valid `node_modules` targets beneath the selected root;
+- directories with the wrong final name;
+- missing targets;
+- files named `node_modules`;
+- targets outside the selected root;
+- path-prefix confusion such as `projects` versus `projects-other`;
+- rejection of the selected scan root itself.
 
 The test suite also verifies that invalid scan roots, including missing paths
 and files supplied in place of directories, are rejected.
@@ -186,7 +225,10 @@ The application currently:
 - does not support cancellation for long-running scans;
 - performs directory-size calculation sequentially;
 - does not yet provide dedicated Windows-specific tests for inaccessible
-  directory ACLs, junctions, or other reparse-point behaviour.
+  directory ACLs, junctions, or other reparse-point behaviour;
+- does not yet provide a complete Windows reparse-point deletion policy;
+- does not yet protect a future deletion operation from filesystem changes
+  between validation and deletion.
 
 Filesystem deletion will be introduced only after the relevant validation and
-safety behaviour has been implemented and tested.
+Windows-specific safety behaviour has been implemented and tested.
