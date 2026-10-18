@@ -23,7 +23,9 @@ The application can currently:
 - preserve rejected candidates in the scan results with the rejection reason;
 - allow currently eligible candidates to be explicitly selected by invocation-
   local candidate index;
-- report selected candidates without modifying the filesystem.
+- allow the exact selected candidate set to be explicitly confirmed for the
+  current invocation;
+- report selection and confirmation state without modifying the filesystem.
 
 Deletion is not implemented yet.
 
@@ -91,6 +93,28 @@ Selected 2 candidates:
 No filesystem changes were made.
 ```
 
+The exact selected set can be explicitly confirmed:
+
+```powershell
+go run . -root C:\Projects -select 1,2 -confirm
+```
+
+Example confirmation output:
+
+```text
+Selected 2 candidates:
+
+[1] C:\Projects\app-one\node_modules
+[2] C:\Projects\app-two\node_modules
+
+Selection confirmed.
+
+No filesystem changes were made.
+```
+
+The `-confirm` option requires `-select`. Supplying `-confirm` without a
+selection request is invalid and is rejected before filesystem scanning begins.
+
 The `-select` option accepts a comma-separated list of positive decimal
 candidate indexes.
 
@@ -108,7 +132,7 @@ presentation and input handles, not persistent candidate identities.
 All discovered candidates receive an index, including candidates that are
 rejected by cleanup validation.
 
-Rejected candidates remain visible but cannot be selected.
+Rejected candidates remain visible but cannot be selected or confirmed.
 
 Malformed, duplicate, nonexistent, or rejected candidate indexes cause the
 entire selection request to fail. Selection is never partially accepted.
@@ -146,10 +170,10 @@ C:\Projects\app\node_modules
 The nested dependency directory is not reported separately because it is
 already contained within the outer `node_modules` tree.
 
-## Discovery, eligibility, and selection
+## Discovery, eligibility, selection, and confirmation
 
-Discovery, cleanup eligibility, and selection are deliberately separate
-concepts.
+Discovery, cleanup eligibility, selection, and confirmation are deliberately
+separate concepts.
 
 Finding a `node_modules` directory establishes that the directory was
 discovered during the scan. It does not establish permission to delete it.
@@ -159,20 +183,15 @@ Each discovered candidate is validated independently after discovery.
 A candidate that fails cleanup validation remains in the results and is
 reported as rejected together with the validation reason.
 
-Therefore:
-
-```text
-discovered
-does not imply
-eligible for cleanup
-```
-
 An eligible result is reported as **currently eligible** because validation
 represents the filesystem state observed at that point in time.
 
 Selection is a separate explicit user action.
 
-Therefore:
+Confirmation is an explicit acknowledgement of the exact successfully resolved
+selected candidate set for the current invocation.
+
+The lifecycle is:
 
 ```text
 discovered
@@ -184,6 +203,8 @@ selected
 confirmed
 ≠
 freshly validated for deletion
+≠
+deleted
 ```
 
 Only candidates discovered in the current invocation and assessed as currently
@@ -191,6 +212,10 @@ eligible can be selected.
 
 Selection does not constitute confirmation, durable authorization, or
 permission to delete filesystem content.
+
+Confirmation also does not constitute durable authorization or permission to
+delete filesystem content. It records explicit user acknowledgement of the
+current selected set only.
 
 ## Directory sizes
 
@@ -244,8 +269,8 @@ The project favours:
 
 ## Safety model
 
-Discovery, cleanup validation, selection, future confirmation, and future
-deletion are separate workflow stages.
+Discovery, cleanup validation, selection, confirmation, future fresh validation,
+and future deletion are separate workflow stages.
 
 The current implementation is read-only and does not remove filesystem
 content.
@@ -256,11 +281,15 @@ reported as currently eligible for selection.
 A current eligibility result is an informational snapshot, not durable
 authorization.
 
-Selection records user intent for a later workflow stage. It does not authorize
-deletion.
+Selection records user intent for a later workflow stage.
+
+Confirmation records explicit acknowledgement of the exact selected candidate
+set for the current invocation.
+
+Neither selection nor confirmation authorizes deletion.
 
 Any future destructive operation must perform fresh validation immediately
-before attempting deletion.
+before attempting filesystem modification.
 
 ## Cleanup-target validation
 
@@ -314,6 +343,10 @@ The selection tests cover:
 - all-or-nothing selection behaviour;
 - selection failure when no candidates exist.
 
+Confirmation currently adds only a thin CLI orchestration rule: `-confirm`
+requires `-select`. It does not introduce a separate confirmation algorithm or
+persistent confirmation state.
+
 The validation tests cover:
 
 - valid `node_modules` targets beneath the selected root;
@@ -350,8 +383,10 @@ The application currently:
 - requires the scan root to be supplied through the command line;
 - uses invocation-local numeric indexes as the temporary CLI selection
   interface;
+- uses an invocation-local boolean `-confirm` flag as the temporary CLI
+  confirmation interface;
+- does not persist selection or confirmation state;
 - does not provide a graphical interface;
-- does not provide a cleanup confirmation workflow;
 - does not delete directories;
 - does not support cancellation for long-running scans;
 - performs directory-size calculation sequentially;

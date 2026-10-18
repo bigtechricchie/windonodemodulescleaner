@@ -24,6 +24,12 @@ func main() {
 		"comma-separated candidate indexes to select",
 	)
 
+	confirmRequested := flag.Bool(
+		"confirm",
+		false,
+		"confirm the selected cleanup candidates",
+	)
+
 	flag.Parse()
 
 	selectProvided := false
@@ -36,6 +42,14 @@ func main() {
 
 	if *rootDirectory == "" {
 		fmt.Fprintln(os.Stderr, "error: -root is required")
+		os.Exit(1)
+	}
+
+	if *confirmRequested && !selectProvided {
+		fmt.Fprintln(
+			os.Stderr,
+			"error: -confirm requires -select",
+		)
 		os.Exit(1)
 	}
 
@@ -92,6 +106,13 @@ func main() {
 
 	if selectProvided {
 		printSelectedCandidates(selectedCandidates)
+
+		if *confirmRequested {
+			fmt.Println("Selection confirmed.")
+			fmt.Println()
+		}
+
+		fmt.Println("No filesystem changes were made.")
 	}
 
 	if len(scanOutcome.Warnings) > 0 {
@@ -200,7 +221,6 @@ func printSelectedCandidates(
 	}
 
 	fmt.Println()
-	fmt.Println("No filesystem changes were made.")
 }
 
 func formatByteSize(sizeBytes int64) string {
