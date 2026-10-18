@@ -17,8 +17,10 @@ The application can currently:
 - identify top-level `node_modules` directories;
 - attempt to calculate the size of each discovered directory;
 - report inaccessible paths encountered during an otherwise valid scan;
-- provide independent cleanup-target validation for future deletion workflows;
-- reject cleanup paths containing linked descendant directory entries;
+- validate discovered cleanup candidates independently from discovery;
+- report whether each discovered candidate is currently eligible for future
+  cleanup;
+- preserve rejected candidates in the scan results with the rejection reason;
 - report the results without modifying the filesystem.
 
 Deletion is not implemented yet.
@@ -41,7 +43,8 @@ Initial target:
 
 - Windows 10;
 - Windows 11;
-- x86-64.
+- x86-64;
+- Go 1.27.1.
 
 ## Usage
 
@@ -59,7 +62,19 @@ Scanning C:\Projects for node_modules directories...
 Found 2 node_modules directories:
 
 C:\Projects\app-one\node_modules    824.3 MiB
+  Cleanup eligibility: currently eligible
+
 C:\Projects\app-two\node_modules      1.1 GiB
+  Cleanup eligibility: currently eligible
+```
+
+A discovered directory that does not satisfy the cleanup-validation rules
+remains visible:
+
+```text
+C:\Projects\workspace\app\node_modules    420.3 MiB
+  Cleanup eligibility: rejected
+  Reason: validate cleanup target path: path entry is not an ordinary directory: C:\Projects\workspace
 ```
 
 If no matching directories are found:
@@ -91,6 +106,33 @@ C:\Projects\app\node_modules
 The nested dependency directory is not reported separately because it is
 already contained within the outer `node_modules` tree.
 
+## Discovery and cleanup eligibility
+
+Discovery and cleanup eligibility are deliberately separate concepts.
+
+Finding a `node_modules` directory establishes that the directory was
+discovered during the scan. It does not establish permission to delete it.
+
+Each discovered candidate is validated independently after discovery.
+
+A candidate that fails cleanup validation remains in the results and is
+reported as rejected together with the validation reason.
+
+Therefore:
+
+```text
+discovered
+does not imply
+eligible for cleanup
+```
+
+A validation rejection does not become a fatal scan error and does not cause
+the discovered candidate to disappear from the results.
+
+An eligible result is reported as **currently eligible** because validation
+represents the filesystem state observed at that point in time. It is not
+durable authorization for a future destructive operation.
+
 ## Directory sizes
 
 Directory sizes are calculated during scanning from the files visible to the
@@ -107,8 +149,10 @@ GiB
 If the application cannot determine the size of a discovered directory, the
 directory remains in the scan results and its size is reported as unavailable.
 
-A size-calculation failure does not cause an otherwise discovered
-`node_modules` directory to be discarded from the results.
+Size availability and cleanup eligibility are independent.
+
+A candidate may therefore be currently eligible for future cleanup even when
+its size could not be calculated.
 
 ## Scan warnings
 
@@ -144,20 +188,17 @@ The project favours:
 
 ## Safety model
 
-Discovery and deletion are separate operations.
-
-Finding a directory gives the application permission to present it for review,
-not permission to delete it.
+Discovery, cleanup validation, and future deletion are separate operations.
 
 The current implementation is read-only and does not remove filesystem
 content.
 
-Before a discovered directory can become eligible for future deletion, it must
-pass validation independently from discovery.
+A discovered directory must pass cleanup-target validation before it can be
+reported as currently eligible for a future cleanup workflow.
+
+Current eligibility is not deletion authorization.
 
 ## Cleanup-target validation
-
-Deletion is not implemented yet.
 
 The current validation requires that:
 
@@ -171,29 +212,24 @@ The current validation requires that:
 - the resolved target remains contained within the resolved scan root after
   symbolic-link resolution.
 
-The selected scan root itself is not subject to the descendant
-ordinary-directory rule in the current validation policy.
+The selected scan root is the user-established trust boundary.
+
+Filesystem topology above the selected root, and the topology used to reach the
+selected root itself, is not currently policed by cleanup validation.
 
 Cleanup targets are rejected if the target itself, or any descendant path
-component beneath the selected scan root, is a symbolic link or supported
-Windows name-surrogate directory reparse point that `Lstat` does not report as
-an ordinary directory.
+component beneath the selected root, is a symbolic link or supported Windows
+name-surrogate directory reparse point that `Lstat` does not report as an
+ordinary directory.
 
-This policy covers the cleanup path beneath the selected root. It does not yet
-define whether the selected scan root itself may be reached through a symbolic
-link, junction, mounted folder, or other reparse-point topology.
+`EvalSymlinks` provides an additional symbolic-link containment check.
 
-Resolved-path containment remains a separate check because path resolution can
-still affect how the selected root and cleanup target relate.
+It is not relied upon as complete Windows junction or mount-point resolution.
 
 These checks establish a baseline safety boundary between discovery and future
 destructive operations.
 
 They do not constitute final deletion authorization.
-
-Broader Windows reparse-point policy and protection against filesystem changes
-between validation and deletion require additional work before deletion is
-introduced.
 
 ## Testing
 
@@ -217,8 +253,10 @@ The validation tests cover:
 - rejection of cleanup targets beneath symbolic-link ancestors where the test
   environment permits symbolic-link creation.
 
-The test suite also verifies that invalid scan roots, including missing paths
-and files supplied in place of directories, are rejected.
+The scanner remains responsible only for discovery and size information.
+
+Cleanup eligibility is assessed separately by the application flow after
+discovery.
 
 Run the test suite with:
 
@@ -242,16 +280,15 @@ The application currently:
 - requires the scan root to be supplied through the command line;
 - does not provide a graphical interface;
 - does not delete directories;
+- does not provide a cleanup confirmation workflow;
 - does not support cancellation for long-running scans;
 - performs directory-size calculation sequentially;
 - does not yet provide dedicated Windows-specific automated coverage for
   junctions and broader reparse-point behaviour;
-- does not yet define whether the selected scan root itself may be reached
-  through a link, junction, or other reparse-point topology;
-- does not yet provide a complete Windows reparse-point deletion policy;
-- does not yet protect a future deletion operation from filesystem changes
-  between validation and deletion.
+- does not provide complete Windows reparse-point handling;
+- does not protect a future deletion operation from filesystem changes between
+  validation and deletion.
 
 Filesystem deletion will be introduced only after the relevant validation,
-Windows-specific path-safety behaviour, and destructive-operation safeguards
-have been implemented and tested.
+Windows-specific path-safety behaviour, pre-deletion revalidation, and
+destructive-operation safeguards have been implemented and tested.

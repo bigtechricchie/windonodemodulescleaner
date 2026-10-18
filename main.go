@@ -6,6 +6,11 @@ import (
 	"os"
 )
 
+type candidateResult struct {
+	ScanResult      scanResult
+	ValidationError error
+}
+
 func main() {
 	rootDirectory := flag.String(
 		"root",
@@ -21,7 +26,7 @@ func main() {
 	}
 
 	fmt.Printf(
-		"Scanning %s for node_modules directories...\n",
+		"Scanning %s for node_modules directories...\n\n",
 		*rootDirectory,
 	)
 
@@ -31,42 +36,42 @@ func main() {
 		os.Exit(1)
 	}
 
-	if len(scanOutcome.Results) == 0 {
+	candidateResults := make(
+		[]candidateResult,
+		0,
+		len(scanOutcome.Results),
+	)
+
+	for _, result := range scanOutcome.Results {
+		candidateResults = append(
+			candidateResults,
+			candidateResult{
+				ScanResult: result,
+				ValidationError: validateCleanupTarget(
+					*rootDirectory,
+					result.Path,
+				),
+			},
+		)
+	}
+
+	if len(candidateResults) == 0 {
 		fmt.Println("No node_modules directories found.")
 	} else {
 		directoryWord := "directories"
 
-		if len(scanOutcome.Results) == 1 {
+		if len(candidateResults) == 1 {
 			directoryWord = "directory"
 		}
 
 		fmt.Printf(
-			"Found %d node_modules %s:\n",
-			len(scanOutcome.Results),
+			"Found %d node_modules %s:\n\n",
+			len(candidateResults),
 			directoryWord,
 		)
 
-		for _, result := range scanOutcome.Results {
-			if result.SizeError != nil {
-				fmt.Printf(
-					"%s    size unavailable\n",
-					result.Path,
-				)
-
-				fmt.Fprintf(
-					os.Stderr,
-					"warning: %v\n",
-					result.SizeError,
-				)
-
-				continue
-			}
-
-			fmt.Printf(
-				"%s    %s\n",
-				result.Path,
-				formatByteSize(result.SizeBytes),
-			)
+		for _, result := range candidateResults {
+			printCandidateResult(result)
 		}
 	}
 
@@ -86,6 +91,42 @@ func main() {
 			)
 		}
 	}
+}
+
+func printCandidateResult(result candidateResult) {
+	scanResult := result.ScanResult
+
+	if scanResult.SizeError != nil {
+		fmt.Printf(
+			"%s    size unavailable\n",
+			scanResult.Path,
+		)
+
+		fmt.Fprintf(
+			os.Stderr,
+			"warning: %v\n",
+			scanResult.SizeError,
+		)
+	} else {
+		fmt.Printf(
+			"%s    %s\n",
+			scanResult.Path,
+			formatByteSize(scanResult.SizeBytes),
+		)
+	}
+
+	if result.ValidationError != nil {
+		fmt.Println("  Cleanup eligibility: rejected")
+		fmt.Printf(
+			"  Reason: %v\n",
+			result.ValidationError,
+		)
+		fmt.Println()
+		return
+	}
+
+	fmt.Println("  Cleanup eligibility: currently eligible")
+	fmt.Println()
 }
 
 func formatByteSize(sizeBytes int64) string {
