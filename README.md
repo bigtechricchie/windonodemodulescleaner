@@ -25,7 +25,10 @@ The application can currently:
   local candidate index;
 - allow the exact selected candidate set to be explicitly confirmed for the
   current invocation;
-- report selection and confirmation state without modifying the filesystem.
+- freshly validate every confirmed candidate before any future destructive
+  stage;
+- report selection, confirmation, and fresh-validation state without modifying
+  the filesystem.
 
 Deletion is not implemented yet.
 
@@ -108,6 +111,8 @@ Selected 2 candidates:
 [2] C:\Projects\app-two\node_modules
 
 Selection confirmed.
+
+Fresh validation passed for 2 candidates.
 
 No filesystem changes were made.
 ```
@@ -217,6 +222,13 @@ Confirmation also does not constitute durable authorization or permission to
 delete filesystem content. It records explicit user acknowledgement of the
 current selected set only.
 
+After confirmation, every selected candidate is validated again against the
+current filesystem state. If any candidate fails this fresh validation, the
+entire gate fails and the workflow exits without filesystem modification.
+
+A successful fresh-validation result is still point-in-time information rather
+than durable authorization for later deletion.
+
 ## Directory sizes
 
 Directory sizes are calculated during scanning from the files visible to the
@@ -288,8 +300,12 @@ set for the current invocation.
 
 Neither selection nor confirmation authorizes deletion.
 
-Any future destructive operation must perform fresh validation immediately
-before attempting filesystem modification.
+After confirmation, the application performs fresh validation over the exact
+selected candidate set. Any failure aborts the whole fresh-validation gate.
+
+This fresh-validation stage remains read-only. When deletion is introduced,
+validation must remain immediately adjacent to the destructive operation rather
+than relying on an earlier successful result.
 
 ## Cleanup-target validation
 
@@ -347,6 +363,17 @@ Confirmation currently adds only a thin CLI orchestration rule: `-confirm`
 requires `-select`. It does not introduce a separate confirmation algorithm or
 persistent confirmation state.
 
+Fresh-validation tests cover:
+
+- acceptance of valid confirmed candidates;
+- acceptance of multiple valid confirmed candidates;
+- rejection of an empty selected-candidate set;
+- rejection of a candidate that disappears before fresh validation;
+- rejection of changed cleanup-path topology where the test environment permits
+  symbolic-link creation;
+- preservation of invocation-local candidate indexes in fresh-validation
+  failures.
+
 The validation tests cover:
 
 - valid `node_modules` targets beneath the selected root;
@@ -393,8 +420,11 @@ The application currently:
 - does not yet provide dedicated Windows-specific automated coverage for
   junctions and broader reparse-point behaviour;
 - does not provide complete Windows reparse-point handling;
-- does not protect a future deletion operation from filesystem changes between
-  validation and deletion.
+- performs a read-only fresh-validation gate after confirmation but does not
+  yet make that validation immediately adjacent to an actual deletion
+  operation;
+- does not yet protect a future deletion operation from filesystem changes
+  between its final validation and filesystem modification.
 
 Filesystem deletion will be introduced only after the relevant validation,
 Windows-specific path-safety behaviour, explicit confirmation, fresh

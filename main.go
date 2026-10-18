@@ -110,6 +110,26 @@ func main() {
 		if *confirmRequested {
 			fmt.Println("Selection confirmed.")
 			fmt.Println()
+
+			if err := revalidateSelectedCandidates(
+				*rootDirectory,
+				selectedCandidates,
+			); err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				os.Exit(1)
+			}
+
+			candidateWord := "candidates"
+
+			if len(selectedCandidates) == 1 {
+				candidateWord = "candidate"
+			}
+
+			fmt.Printf(
+				"Fresh validation passed for %d %s.\n\n",
+				len(selectedCandidates),
+				candidateWord,
+			)
 		}
 
 		fmt.Println("No filesystem changes were made.")
