@@ -18,7 +18,7 @@ The application can currently:
 - attempt to calculate the size of each discovered directory;
 - report inaccessible paths encountered during an otherwise valid scan;
 - provide independent cleanup-target validation for future deletion workflows;
-- reject linked cleanup targets that do not appear as ordinary directories;
+- reject cleanup paths containing linked descendant directory entries;
 - report the results without modifying the filesystem.
 
 Deletion is not implemented yet.
@@ -165,20 +165,26 @@ The current validation requires that:
 - the target's final path component is exactly `node_modules`;
 - the target is lexically contained within the selected scan root;
 - the target is not the selected scan root;
-- the final target entry is an ordinary directory rather than a symbolic link
-  or supported Windows name-surrogate directory reparse point;
+- every descendant path component between the selected scan root and the target
+  is reported by `Lstat` as an ordinary directory;
 - the resolved target is a directory;
 - the resolved target remains contained within the resolved scan root after
   symbolic-link resolution.
 
-Cleanup targets that are themselves symbolic links or Windows name-surrogate
-directory reparse points, such as junctions or mounted folders, are not
-eligible for cleanup.
+The selected scan root itself is not subject to the descendant
+ordinary-directory rule in the current validation policy.
 
-The `Lstat` check applies to the final cleanup-target entry. Resolved-path
-containment remains necessary because an ancestor directory can still redirect
-the complete path through a symbolic link, junction, or other supported
-name-surrogate path component.
+Cleanup targets are rejected if the target itself, or any descendant path
+component beneath the selected scan root, is a symbolic link or supported
+Windows name-surrogate directory reparse point that `Lstat` does not report as
+an ordinary directory.
+
+This policy covers the cleanup path beneath the selected root. It does not yet
+define whether the selected scan root itself may be reached through a symbolic
+link, junction, mounted folder, or other reparse-point topology.
+
+Resolved-path containment remains a separate check because path resolution can
+still affect how the selected root and cleanup target relate.
 
 These checks establish a baseline safety boundary between discovery and future
 destructive operations.
@@ -207,7 +213,9 @@ The validation tests cover:
 - path-prefix confusion such as `projects` versus `projects-other`;
 - rejection of the selected scan root itself;
 - rejection of symbolic-link cleanup targets where the test environment permits
-  symbolic-link creation.
+  symbolic-link creation;
+- rejection of cleanup targets beneath symbolic-link ancestors where the test
+  environment permits symbolic-link creation.
 
 The test suite also verifies that invalid scan roots, including missing paths
 and files supplied in place of directories, are rejected.
@@ -238,6 +246,8 @@ The application currently:
 - performs directory-size calculation sequentially;
 - does not yet provide dedicated Windows-specific automated coverage for
   junctions and broader reparse-point behaviour;
+- does not yet define whether the selected scan root itself may be reached
+  through a link, junction, or other reparse-point topology;
 - does not yet provide a complete Windows reparse-point deletion policy;
 - does not yet protect a future deletion operation from filesystem changes
   between validation and deletion.

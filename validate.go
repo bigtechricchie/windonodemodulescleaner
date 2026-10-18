@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 func validateCleanupTarget(
@@ -38,24 +39,22 @@ func validateCleanupTarget(
 		)
 	}
 
-	targetEntry, err := os.Lstat(absoluteTarget)
-	if err != nil {
+	if err := validateOrdinaryDirectoryPath(
+		absoluteRoot,
+		absoluteTarget,
+	); err != nil {
 		return fmt.Errorf(
-			"inspect cleanup target entry: %w",
+			"validate cleanup target path: %w",
 			err,
-		)
-	}
-
-	if !targetEntry.IsDir() {
-		return fmt.Errorf(
-			"cleanup target is not an ordinary directory: %s",
-			absoluteTarget,
 		)
 	}
 
 	targetInfo, err := os.Stat(absoluteTarget)
 	if err != nil {
-		return fmt.Errorf("inspect cleanup target: %w", err)
+		return fmt.Errorf(
+			"inspect cleanup target: %w",
+			err,
+		)
 	}
 
 	if !targetInfo.IsDir() {
@@ -120,6 +119,65 @@ func validatePathContainedWithin(
 			"cleanup target is outside the scan root: %s",
 			targetDirectory,
 		)
+	}
+
+	return nil
+}
+
+func validateOrdinaryDirectoryPath(
+	rootDirectory string,
+	targetDirectory string,
+) error {
+	relativePath, err := filepath.Rel(
+		rootDirectory,
+		targetDirectory,
+	)
+	if err != nil {
+		return fmt.Errorf(
+			"determine relative cleanup path: %w",
+			err,
+		)
+	}
+
+	if relativePath == "." {
+		return fmt.Errorf(
+			"cleanup target must not be the scan root",
+		)
+	}
+
+	if !filepath.IsLocal(relativePath) {
+		return fmt.Errorf(
+			"cleanup target is outside the scan root: %s",
+			targetDirectory,
+		)
+	}
+
+	currentPath := rootDirectory
+
+	for _, component := range strings.Split(
+		relativePath,
+		string(filepath.Separator),
+	) {
+		currentPath = filepath.Join(
+			currentPath,
+			component,
+		)
+
+		entryInfo, err := os.Lstat(currentPath)
+		if err != nil {
+			return fmt.Errorf(
+				"inspect path entry %q: %w",
+				currentPath,
+				err,
+			)
+		}
+
+		if !entryInfo.IsDir() {
+			return fmt.Errorf(
+				"path entry is not an ordinary directory: %s",
+				currentPath,
+			)
+		}
 	}
 
 	return nil
