@@ -275,6 +275,72 @@ func TestValidateCleanupTargetRejectsSymlinkTarget(
 	}
 }
 
+func TestValidateCleanupTargetRejectsSymlinkAncestor(
+	t *testing.T,
+) {
+	rootDirectory := t.TempDir()
+
+	actualWorkspace := filepath.Join(
+		rootDirectory,
+		"actual-workspace",
+	)
+
+	projectDirectory := filepath.Join(
+		actualWorkspace,
+		"app",
+	)
+
+	targetDirectory := filepath.Join(
+		projectDirectory,
+		"node_modules",
+	)
+
+	linkedWorkspace := filepath.Join(
+		rootDirectory,
+		"workspace",
+	)
+
+	if err := os.MkdirAll(targetDirectory, 0o755); err != nil {
+		t.Fatalf(
+			"create cleanup target: %v",
+			err,
+		)
+	}
+
+	if err := os.Symlink(
+		actualWorkspace,
+		linkedWorkspace,
+	); err != nil {
+		if runtime.GOOS == "windows" {
+			t.Skipf(
+				"symlink creation unavailable on this Windows host: %v",
+				err,
+			)
+		}
+
+		t.Fatalf(
+			"create symlink ancestor: %v",
+			err,
+		)
+	}
+
+	linkedTarget := filepath.Join(
+		linkedWorkspace,
+		"app",
+		"node_modules",
+	)
+
+	err := validateCleanupTarget(
+		rootDirectory,
+		linkedTarget,
+	)
+	if err == nil {
+		t.Fatal(
+			"expected cleanup target beneath symlink ancestor to be rejected",
+		)
+	}
+}
+
 func TestValidatePathContainedWithinRejectsRootItself(
 	t *testing.T,
 ) {
