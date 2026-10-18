@@ -21,7 +21,9 @@ The application can currently:
 - report whether each discovered candidate is currently eligible for future
   cleanup;
 - preserve rejected candidates in the scan results with the rejection reason;
-- report the results without modifying the filesystem.
+- allow currently eligible candidates to be explicitly selected by invocation-
+  local candidate index;
+- report selected candidates without modifying the filesystem.
 
 Deletion is not implemented yet.
 
@@ -48,7 +50,7 @@ Initial target:
 
 ## Usage
 
-Scan a directory tree by providing the root directory:
+Scan a directory tree:
 
 ```powershell
 go run . -root C:\Projects
@@ -59,23 +61,61 @@ Example output:
 ```text
 Scanning C:\Projects for node_modules directories...
 
-Found 2 node_modules directories:
+Found 3 node_modules directories:
 
-C:\Projects\app-one\node_modules    824.3 MiB
-  Cleanup eligibility: currently eligible
+[1] C:\Projects\app-one\node_modules    824.3 MiB
+    Cleanup eligibility: currently eligible
 
-C:\Projects\app-two\node_modules      1.1 GiB
-  Cleanup eligibility: currently eligible
+[2] C:\Projects\app-two\node_modules      1.1 GiB
+    Cleanup eligibility: currently eligible
+
+[3] C:\Projects\linked\node_modules     420.3 MiB
+    Cleanup eligibility: rejected
+    Reason: validate cleanup target path: path entry is not an ordinary directory: C:\Projects\linked
 ```
 
-A discovered directory that does not satisfy the cleanup-validation rules
-remains visible:
+Currently eligible candidates can be selected using their displayed indexes:
+
+```powershell
+go run . -root C:\Projects -select 1,2
+```
+
+Example selection output:
 
 ```text
-C:\Projects\workspace\app\node_modules    420.3 MiB
-  Cleanup eligibility: rejected
-  Reason: validate cleanup target path: path entry is not an ordinary directory: C:\Projects\workspace
+Selected 2 candidates:
+
+[1] C:\Projects\app-one\node_modules
+[2] C:\Projects\app-two\node_modules
+
+No filesystem changes were made.
 ```
+
+The `-select` option accepts a comma-separated list of positive decimal
+candidate indexes.
+
+For example:
+
+```text
+1
+1,2
+1,2,5
+```
+
+Candidate indexes are valid only for the current invocation. They are
+presentation and input handles, not persistent candidate identities.
+
+All discovered candidates receive an index, including candidates that are
+rejected by cleanup validation.
+
+Rejected candidates remain visible but cannot be selected.
+
+Malformed, duplicate, nonexistent, or rejected candidate indexes cause the
+entire selection request to fail. Selection is never partially accepted.
+
+Omitting `-select` performs a normal inspection-only scan.
+
+Explicitly supplying an empty `-select` value is invalid.
 
 If no matching directories are found:
 
@@ -106,9 +146,10 @@ C:\Projects\app\node_modules
 The nested dependency directory is not reported separately because it is
 already contained within the outer `node_modules` tree.
 
-## Discovery and cleanup eligibility
+## Discovery, eligibility, and selection
 
-Discovery and cleanup eligibility are deliberately separate concepts.
+Discovery, cleanup eligibility, and selection are deliberately separate
+concepts.
 
 Finding a `node_modules` directory establishes that the directory was
 discovered during the scan. It does not establish permission to delete it.
@@ -126,12 +167,30 @@ does not imply
 eligible for cleanup
 ```
 
-A validation rejection does not become a fatal scan error and does not cause
-the discovered candidate to disappear from the results.
-
 An eligible result is reported as **currently eligible** because validation
-represents the filesystem state observed at that point in time. It is not
-durable authorization for a future destructive operation.
+represents the filesystem state observed at that point in time.
+
+Selection is a separate explicit user action.
+
+Therefore:
+
+```text
+discovered
+≠
+currently eligible
+≠
+selected
+≠
+confirmed
+≠
+freshly validated for deletion
+```
+
+Only candidates discovered in the current invocation and assessed as currently
+eligible can be selected.
+
+Selection does not constitute confirmation, durable authorization, or
+permission to delete filesystem content.
 
 ## Directory sizes
 
@@ -150,9 +209,6 @@ If the application cannot determine the size of a discovered directory, the
 directory remains in the scan results and its size is reported as unavailable.
 
 Size availability and cleanup eligibility are independent.
-
-A candidate may therefore be currently eligible for future cleanup even when
-its size could not be calculated.
 
 ## Scan warnings
 
@@ -188,15 +244,23 @@ The project favours:
 
 ## Safety model
 
-Discovery, cleanup validation, and future deletion are separate operations.
+Discovery, cleanup validation, selection, future confirmation, and future
+deletion are separate workflow stages.
 
 The current implementation is read-only and does not remove filesystem
 content.
 
 A discovered directory must pass cleanup-target validation before it can be
-reported as currently eligible for a future cleanup workflow.
+reported as currently eligible for selection.
 
-Current eligibility is not deletion authorization.
+A current eligibility result is an informational snapshot, not durable
+authorization.
+
+Selection records user intent for a later workflow stage. It does not authorize
+deletion.
+
+Any future destructive operation must perform fresh validation immediately
+before attempting deletion.
 
 ## Cleanup-target validation
 
@@ -233,11 +297,22 @@ They do not constitute final deletion authorization.
 
 ## Testing
 
-The scanner, directory-size behaviour, and cleanup-target validation are tested
-using temporary filesystem trees created specifically for each test run.
+The scanner, directory-size behaviour, cleanup-target validation, and candidate
+selection policy are tested using test-owned data and temporary filesystem trees.
 
-This allows discovery, size calculation, and path-validation behaviour to be
-verified without scanning or modifying real development repositories.
+The selection tests cover:
+
+- parsing a single candidate index;
+- parsing multiple candidate indexes;
+- rejection of empty selection input;
+- rejection of zero and negative indexes;
+- rejection of malformed input;
+- rejection of unsupported whitespace syntax;
+- rejection of duplicate indexes;
+- rejection of nonexistent indexes;
+- rejection of currently ineligible candidates;
+- all-or-nothing selection behaviour;
+- selection failure when no candidates exist.
 
 The validation tests cover:
 
@@ -252,11 +327,6 @@ The validation tests cover:
   symbolic-link creation;
 - rejection of cleanup targets beneath symbolic-link ancestors where the test
   environment permits symbolic-link creation.
-
-The scanner remains responsible only for discovery and size information.
-
-Cleanup eligibility is assessed separately by the application flow after
-discovery.
 
 Run the test suite with:
 
@@ -278,9 +348,11 @@ go build ./...
 The application currently:
 
 - requires the scan root to be supplied through the command line;
+- uses invocation-local numeric indexes as the temporary CLI selection
+  interface;
 - does not provide a graphical interface;
-- does not delete directories;
 - does not provide a cleanup confirmation workflow;
+- does not delete directories;
 - does not support cancellation for long-running scans;
 - performs directory-size calculation sequentially;
 - does not yet provide dedicated Windows-specific automated coverage for
@@ -290,5 +362,6 @@ The application currently:
   validation and deletion.
 
 Filesystem deletion will be introduced only after the relevant validation,
-Windows-specific path-safety behaviour, pre-deletion revalidation, and
-destructive-operation safeguards have been implemented and tested.
+Windows-specific path-safety behaviour, explicit confirmation, fresh
+pre-deletion validation, and destructive-operation safeguards have been
+implemented and tested.
