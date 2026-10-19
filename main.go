@@ -30,6 +30,12 @@ func main() {
 		"confirm the selected cleanup candidates",
 	)
 
+	deleteRequested := flag.Bool(
+		"delete",
+		false,
+		"delete the confirmed cleanup candidates",
+	)
+
 	flag.Parse()
 
 	selectProvided := false
@@ -49,6 +55,14 @@ func main() {
 		fmt.Fprintln(
 			os.Stderr,
 			"error: -confirm requires -select",
+		)
+		os.Exit(1)
+	}
+
+	if *deleteRequested && !*confirmRequested {
+		fmt.Fprintln(
+			os.Stderr,
+			"error: -delete requires -confirm",
 		)
 		os.Exit(1)
 	}
@@ -130,6 +144,21 @@ func main() {
 				len(selectedCandidates),
 				candidateWord,
 			)
+
+			if *deleteRequested {
+				cleanupResults := cleanupSelectedCandidates(
+					*rootDirectory,
+					selectedCandidates,
+				)
+
+				printCleanupResults(cleanupResults)
+
+				if cleanupFailureCount(cleanupResults) > 0 {
+					os.Exit(1)
+				}
+
+				return
+			}
 		}
 
 		fmt.Println("No filesystem changes were made.")

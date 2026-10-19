@@ -25,12 +25,13 @@ The application can currently:
   local candidate index;
 - allow the exact selected candidate set to be explicitly confirmed for the
   current invocation;
-- freshly validate every confirmed candidate before any future destructive
+- freshly validate every confirmed candidate before entering the destructive
   stage;
-- report selection, confirmation, and fresh-validation state without modifying
-  the filesystem.
-
-Deletion is not implemented yet.
+- require a separate explicit deletion request before modifying the filesystem;
+- validate each candidate again immediately before its own deletion attempt;
+- delete confirmed candidates sequentially and report per-candidate outcomes;
+- verify that each successfully removed target is observed absent immediately
+  after its deletion attempt.
 
 ## Scope
 
@@ -120,6 +121,35 @@ No filesystem changes were made.
 The `-confirm` option requires `-select`. Supplying `-confirm` without a
 selection request is invalid and is rejected before filesystem scanning begins.
 
+Deletion requires a separate explicit `-delete` flag:
+
+```powershell
+go run . -root C:\Projects -select 1,2 -confirm -delete
+```
+
+The `-delete` option requires `-confirm`. Existing inspection, selection,
+and confirmation commands remain non-destructive.
+
+Deletion is sequential. Each selected candidate is validated again immediately
+before its own deletion attempt. One candidate failure does not prevent later
+confirmed candidates from being attempted.
+
+Example result:
+
+```text
+Cleanup results:
+
+[1] C:\Projects\app-one\node_modules
+    Deleted
+
+[2] C:\Projects\app-two\node_modules
+    Failed: ...
+
+Cleanup completed with 1 failure.
+```
+
+The process exits successfully only when every requested deletion succeeds.
+
 The `-select` option accepts a comma-separated list of positive decimal
 candidate indexes.
 
@@ -207,7 +237,9 @@ selected
 ≠
 confirmed
 ≠
-freshly validated for deletion
+deletion requested
+≠
+freshly validated immediately before deletion
 ≠
 deleted
 ```
@@ -221,6 +253,8 @@ permission to delete filesystem content.
 Confirmation also does not constitute durable authorization or permission to
 delete filesystem content. It records explicit user acknowledgement of the
 current selected set only.
+
+Deletion requires a separate explicit `-delete` request in the same invocation.
 
 After confirmation, every selected candidate is validated again against the
 current filesystem state. If any candidate fails this fresh validation, the
@@ -303,9 +337,17 @@ Neither selection nor confirmation authorizes deletion.
 After confirmation, the application performs fresh validation over the exact
 selected candidate set. Any failure aborts the whole fresh-validation gate.
 
-This fresh-validation stage remains read-only. When deletion is introduced,
-validation must remain immediately adjacent to the destructive operation rather
-than relying on an earlier successful result.
+The batch fresh-validation stage remains read-only.
+
+When deletion is requested, every candidate is validated again immediately
+before its own destructive operation. The implementation then removes that
+target and immediately checks the path entry with `Lstat`.
+
+A successful cleanup result means that the deletion call returned successfully
+and the target was observed absent immediately afterward. It does not guarantee
+that another process cannot recreate the path later.
+
+Path-based validation and deletion cannot eliminate all filesystem races.
 
 ## Cleanup-target validation
 
@@ -363,6 +405,16 @@ Confirmation currently adds only a thin CLI orchestration rule: `-confirm`
 requires `-select`. It does not introduce a separate confirmation algorithm or
 persistent confirmation state.
 
+Cleanup tests cover:
+
+- removal of a valid confirmed candidate;
+- preservation of candidate index and path in cleanup results;
+- final-validation rejection of missing or wrong-name targets;
+- post-deletion absence verification;
+- sequential processing across multiple candidates;
+- continued processing after an individual candidate failure;
+- aggregate failure counting for mixed cleanup outcomes.
+
 Fresh-validation tests cover:
 
 - acceptance of valid confirmed candidates;
@@ -414,19 +466,22 @@ The application currently:
   confirmation interface;
 - does not persist selection or confirmation state;
 - does not provide a graphical interface;
-- does not delete directories;
-- does not support cancellation for long-running scans;
+- deletes only candidates selected and confirmed in the current invocation when
+  the separate `-delete` flag is supplied;
+- performs deletion sequentially;
+- does not automatically retry failed deletions;
+- does not support cancellation for long-running scans or cleanup operations;
 - performs directory-size calculation sequentially;
 - does not yet provide dedicated Windows-specific automated coverage for
   junctions and broader reparse-point behaviour;
 - does not provide complete Windows reparse-point handling;
-- performs a read-only fresh-validation gate after confirmation but does not
-  yet make that validation immediately adjacent to an actual deletion
-  operation;
-- does not yet protect a future deletion operation from filesystem changes
-  between its final validation and filesystem modification.
-
-Filesystem deletion will be introduced only after the relevant validation,
-Windows-specific path-safety behaviour, explicit confirmation, fresh
-pre-deletion validation, and destructive-operation safeguards have been
-implemented and tested.
+- performs a read-only whole-selection fresh-validation gate after
+  confirmation, followed by another validation immediately before each
+  deletion attempt;
+- uses path-based filesystem operations and therefore cannot eliminate all
+  time-of-check/time-of-use races;
+- verifies target absence immediately after a successful deletion call but
+  cannot guarantee the path will remain absent afterward;
+- does not yet provide dedicated Windows-specific automated coverage for
+  deletion failures caused by file locks, ACLs, or broader reparse-point
+  behavior.
