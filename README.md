@@ -51,7 +51,7 @@ Initial target:
 - Windows 10;
 - Windows 11;
 - x86-64;
-- Go 1.27.1.
+- Go 1.27.2.
 
 ## Usage
 
